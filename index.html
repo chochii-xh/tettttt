@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>change</title>
+  <style>
+    body, html {
+      height: 100%;
+      margin: 0;
+      text-align: center;
+    }
+
+    #drawingCanvas {
+      display: block;
+      border: 1px solid #000;
+      background-color: white;
+    }
+
+    #recommendedVideo {
+      margin-top: 20px;
+    }
+
+    #tt {
+      font-family: 'PyeongChangPeace-Bold';
+      align-content: center;
+      font-size: 1.5rem;
+      color: white;
+    }
+
+    #all {
+      display: flex;
+      flex-direction: column;
+      align-items: center; 
+      background-color: skyblue;
+    }
+
+    #flex {display: flex;
+      margin-top: 10px;}
+
+    @font-face {
+      font-family: 'PyeongChangPeace-Bold';
+      src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2206-02@1.0/PyeongChangPeace-Bold.woff2') format('woff2');
+      font-weight: 700;
+      font-style: normal;
+    }
+    #cdrecord{width:600px; height:600px; background: skyblue;}
+
+  </style>
+</head>
+<body>
+  <div id="all">
+    <div id="tt"><h1>지금의 감정을 그려보세요</h1></div>
+    <div id="flex">
+      <div>
+        <canvas id="drawingCanvas" width="600" height="600"></canvas>
+        <div id="flex">
+          <input type="color" id="colorPicker" value="#000000">
+          <input type="range" id="brushSize" min="1" max="20" value="5">
+          <button id="eraserButton">Eraser</button>
+          <button id="undoButton">Undo</button>
+          <button id="completeButton">Complete</button>
+        </div>
+      </div>
+      <div id="cdrecord"></div>
+    </div>
+    <div id="recommendedVideo"></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('drawingCanvas');
+    const context = canvas.getContext('2d');
+    const colorPicker = document.getElementById('colorPicker');
+    const brushSize = document.getElementById('brushSize');
+    const eraserButton = document.getElementById('eraserButton');
+    const undoButton = document.getElementById('undoButton');
+    const completeButton = document.getElementById('completeButton');
+    const recommendedVideoContainer = document.getElementById('recommendedVideo');
+
+    let isDrawing = false;
+    let brushColor = '#000000';
+    let brushWidth = 5;
+    let eraserMode = false;
+    let drawingHistory = [];
+
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    canvas.addEventListener('mouseup', stopDrawing);
+    canvas.addEventListener('mouseout', stopDrawing);
+
+    colorPicker.addEventListener('input', updateBrushColor);
+    brushSize.addEventListener('input', updateBrushSize);
+    eraserButton.addEventListener('click', toggleEraserMode);
+    undoButton.addEventListener('click', undoDrawing);
+    completeButton.addEventListener('click', completeDrawing);
+
+    function startDrawing(e) {
+      isDrawing = true;
+      [prevX, prevY] = [e.clientX - canvas.offsetLeft, e.clientY - canvas.offsetTop];
+      context.lineJoin = 'round';
+      context.lineCap = 'round';
+      context.strokeStyle = eraserMode ? 'white' : brushColor;
+      context.lineWidth = brushWidth;
+      context.beginPath();
+      context.moveTo(prevX, prevY);
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+
+      const [currentX, currentY] = [e.clientX - canvas.offsetLeft, e.clientY - canvas.offsetTop];
+
+      context.lineTo(currentX, currentY);
+      context.stroke();
+    }
+
+    function stopDrawing() {
+      isDrawing = false;
+      drawingHistory.push(canvas.toDataURL()); // Save current state for undo
+    }
+
+    function updateBrushColor() {
+      brushColor = colorPicker.value;
+    }
+
+    function updateBrushSize() {
+      brushWidth = brushSize.value;
+    }
+
+    function toggleEraserMode() {
+      eraserMode = !eraserMode;
+      eraserButton.textContent = eraserMode ? 'Brush' : 'Eraser';
+      context.strokeStyle = eraserMode ? 'white' : brushColor;
+    }
+
+    function undoDrawing() {
+      if (drawingHistory.length > 1) {
+        drawingHistory.pop();
+        const img = new Image();
+        img.onload = function () {
+          context.clearRect(0, 0, canvas.width, canvas.height);
+          context.drawImage(img, 0, 0);
+        };
+        img.src = drawingHistory[drawingHistory.length - 1];
+      }
+    }
+
+    function completeDrawing() {
+      // Calculate average saturation and lightness of used colors
+      const [avgSaturation, avgLightness] = calculateAverageSaturationAndLightness();
+      recommendVideo(avgSaturation, avgLightness);
+    }
+
+    function calculateAverageSaturationAndLightness() {
+      const imageData = context.getImageData(0, 0, canvas.width, canvas.height).data;
+      let totalSaturation = 0;
+      let totalLightness = 0;
+      let nonEmptyPixelCount = 0;
+
+      for (let i = 0; i < imageData.length; i += 4) {
+        const alpha = imageData[i + 3]; // alpha value (transparency)
+        if (alpha > 0) {
+          const [r, g, b] = imageData.slice(i, i + 3);
+          const hsl = rgbToHsl(r, g, b);
+          totalSaturation += hsl[1]; // Add the saturation value
+          totalLightness += hsl[2]; // Add the lightness value
+          nonEmptyPixelCount++;
+        }
+      }
+
+      // Calculate average saturation and lightness
+      const avgSaturation = nonEmptyPixelCount > 0 ? totalSaturation / nonEmptyPixelCount : 0;
+      const avgLightness = nonEmptyPixelCount > 0 ? totalLightness / nonEmptyPixelCount : 0;
+
+      return [avgSaturation, avgLightness];
+    }
+
+    function rgbToHsl(r, g, b) {
+      r /= 255;
+      g /= 255;
+      b /= 255;
+
+      const max = Math.max(r, g, b);
+      const min = Math.min(r, g, b);
+      let h, s, l = (max + min) / 2;
+
+      if (max === min) {
+        h = s = 0; // achromatic
+      } else {
+        const d = max - min;
+        s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+
+        switch (max) {
+          case r:
+            h = (g - b) / d + (g < b ? 6 : 0);
+            break;
+          case g:
+            h = (b - r) / d + 2;
+            break;
+          case b:
+            h = (r - g) / d + 4;
+            break;
+        }
+
+        h /= 6;
+      }
+
+      return [h, s, l];
+    }
+
+        function recommendVideo(avgSaturation, avgLightness) {
+      let videoUrls = [];
+
+      if (avgLightness > 0.66) {
+        // Lightness: High
+        if (avgSaturation > 0.7) {
+          // Saturation: High
+          // 어텐션 기브 아틀란티스소녀
+          videoUrls.push('https://www.youtube.com/embed/js1CtxSY38I?si=UpPYxvfsnpD9vCyj');
+          videoUrls.push('https://www.youtube.com/embed/x2XX3cNW4K0?si=4_6TVDeEVDabQIZW');
+          videoUrls.push('https://www.youtube.com/embed/skbnuIhVQUA?si=3liZpqNmD-Lp79b2');
+        } else if (avgSaturation > 0.4) {
+          // Saturation: Medium
+          // 마차 민들레 스타더스트
+          videoUrls.push('https://www.youtube.com/embed/Nx1nMydv0lY?si=P7vqZVjZbVKqXBuo');
+          videoUrls.push('https://www.youtube.com/embed/Kaq4LFM47I0?si=SEEok6T0D5wSeQJK');
+          videoUrls.push('https://www.youtube.com/embed/sexaFCPcCY4?si=ryig5SrvS8MLr9Wf');
+        } else {
+          // Saturation: Low
+          // 24 노굿모닝 로스트국카
+          videoUrls.push('https://www.youtube.com/embed/eYaDQ0sD6n4?si=xbfzL8YoKjFvQunG');
+          videoUrls.push('https://www.youtube.com/embed/KWV5OY5ZMi8?si=aWknDghwlDjyNhtn');
+          videoUrls.push('https://www.youtube.com/embed/ZeKO0tRRoBg?si=2vTfUmYTLUVdvwAr');
+        }
+      } else if (avgLightness > 0.33) {
+        // Lightness: Medium
+        if (avgSaturation > 0.7) {
+          // Saturation: High
+          // 흥칫뿡 조깅 뱅!ajr
+          videoUrls.push('https://www.youtube.com/embed/RGnLdUJbYmQ?si=kYLwHdGnhChi04vx');
+          videoUrls.push('https://www.youtube.com/embed/8JlNgny1GKQ?si=Ue7KjGWJn44lErF0');
+          videoUrls.push('https://www.youtube.com/embed/4THFRpw68oQ?si=62iqPJJSxdb1prDF');
+        } else if (avgSaturation > 0.4) {
+          // Saturation: Medium
+          // 고스트쉽블러 원더월 파라다이스콜플
+          videoUrls.push('https://www.youtube.com/embed/_tsv8tipQUs?si=Hj7rkEvcIwH-5-ND');
+          videoUrls.push('https://www.youtube.com/embed/6hzrDeceEKc?si=gt4svrC2o4lDNytV');
+          videoUrls.push('https://www.youtube.com/embed/J6ZWlDks0nQ?si=shfEtnWSU-wLSRsn');
+        } else {
+          // Saturation: Low
+          // 505악틱몽키즈 왓어바웃어스 이방인국카
+          videoUrls.push('https://www.youtube.com/embed/qU9mHegkTc4?si=mMgWO3HhQ4PfB4Bw');
+          videoUrls.push('https://www.youtube.com/embed/ClU3fctbGls?si=V-PPZtioLvyejHEd');
+          videoUrls.push('https://www.youtube.com/embed/vAOFcBlhVFw?si=GJKUnIZvshtsFtm1');
+        }
+      } else {
+        // Lightness: Low
+       if (avgSaturation > 0.7) {
+          // Saturation: High
+          // natural 하이웨이투헬 패러노이드
+          videoUrls.push('https://www.youtube.com/embed/0I647GU3Jsc?si=r8TOEoMzEtHSQkJx');
+          videoUrls.push('https://www.youtube.com/embed/l482T0yNkeo?si=uHKdiuGOBEBblYDX');
+          videoUrls.push('https://www.youtube.com/embed/rMQ20mMOOuM?si=Cwi1jld9eUt3ILSn');
+        } else if (avgSaturation > 0.4) {
+          // Saturation: Medium
+          // 있지 본투다이 홍련
+          videoUrls.push('https://www.youtube.com/embed/TCLmm63UMN4?si=tfFEcGRIdsZaVl8s');
+          videoUrls.push('https://www.youtube.com/embed/ncoOwXNVpDc?si=xu6jme0wkdsm8WQx');
+          videoUrls.push('https://www.youtube.com/embed/39LSrOUWJOI?si=8Co3k-y4IRXd8S2b');
+        } else {
+          // Saturation: Low
+          //에브리띵블랙 n/a tom'sdiner
+          videoUrls.push('https://www.youtube.com/embed/mWKDZRJWdF4?si=8_aYcBrW3NIFa5Q3');
+          videoUrls.push('https://www.youtube.com/embed/fGH-w9cz0DA?si=gJHcX7rhtcCOeEVL');
+          videoUrls.push('https://www.youtube.com/embed/j4jtIDaeaWI?si=N83PK1AC4mXT2iDr');
+        }
+      }
+
+
+      // 여기서 랜덤으로 하나의 노래를 선택
+      const randomIndex = Math.floor(Math.random() * videoUrls.length);
+      const randomVideoUrl = videoUrls[randomIndex];
+
+      // cdrecord에 선택된 노래의 iframe을 추가
+      cdrecord.innerHTML = `<iframe width="560" height="315" src="${randomVideoUrl}" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`;
+    }
+  </script>
+</body>
+</html>
